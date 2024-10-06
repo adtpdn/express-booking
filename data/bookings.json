@@ -1,0 +1,23 @@
+[
+  {
+    "id": "1",
+    "serviceTitle": "Sample Service",
+    "date": "2023-05-01",
+    "addons": [
+      {
+        "name": "Addon 1",
+        "price": 20
+      }
+    ],
+    "totalPrice": 120,
+    "status": "pending"
+  },
+  {
+    "id": "b94bd63c-e29f-4827-97a2-77e02bdcb3d1",
+    "serviceTitle": "Sample Service",
+    "date": "2024-10-07",
+    "addons": [],
+    "totalPrice": 100,
+    "status": "pending"
+  }
+]

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking Report</title>
+    <link href="/styles/style.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-6">Booking Report</h1>
+        <div class="bg-white rounded-lg shadow-md overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="bg-gray-200">
+                        <th class="px-4 py-2">ID</th>
+                        <th class="px-4 py-2">Service</th>
+                        <th class="px-4 py-2">Date</th>
+                        <th class="px-4 py-2">Total Price</th>
+                        <th class="px-4 py-2">Status</th>
+                        <th class="px-4 py-2">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% bookings.forEach(booking => { %>
+                        <tr>
+                            <td class="border px-4 py-2"><%= booking.id %></td>
+                            <td class="border px-4 py-2"><%= booking.serviceTitle %></td>
+                            <td class="border px-4 py-2"><%= booking.date %></td>
+                            <td class="border px-4 py-2">$<%= booking.totalPrice %></td>
+                            <td class="border px-4 py-2"><%= booking.status %></td>
+                            <td class="border px-4 py-2">
+                                <button onclick="updateStatus('<%= booking.id %>', 'completed')" class="bg-green-500 text-white px-2 py-1 rounded mr-2">Mark Completed</button>
+                                <button onclick="updateStatus('<%= booking.id %>', 'cancelled')" class="bg-red-500 text-white px-2 py-1 rounded">Cancel</button>
+                            </td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script>
+        function updateStatus(id, status) {
+            fetch('/update-booking-status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ id, status }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Failed to update status');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
