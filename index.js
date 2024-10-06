@@ -3,6 +3,9 @@ const fs = require('fs').promises;
 const path = require('path');
 const markdown = require('markdown-it')();
 const { v4: uuidv4 } = require('uuid');
+const rateLimit = require('express-rate-limit');
+const session = require('express-session');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -17,6 +20,21 @@ app.use(express.static('public'));
 // Parse JSON bodies and URL-encoded bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Set up session middleware
+app.use(session({
+  secret: 'your-secret-key',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: process.env.NODE_ENV === 'production' }
+}));
+
+// Anti-spam protection for form submission
+const submitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 requests per windowMs
+  message: 'Too many booking attempts, please try again later.'
+});
 
 async function initializeBookingsFile() {
   const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
@@ -43,10 +61,10 @@ async function getServices() {
       }
     }
 
-    console.log('Parsed services:', services);
+    // console.log('Parsed services:', services);
     return services;
   } catch (error) {
-    console.error('Error reading services:', error);
+    // console.error('Error reading services:', error);
     return [];
   }
 }
@@ -108,7 +126,7 @@ function parseServiceMarkdown(content) {
     }
   });
 
-  console.log('Parsed service:', service);
+  // console.log('Parsed service:', service);
   return service;
 }
 
@@ -121,7 +139,7 @@ async function getSettings() {
 app.get('/', async (req, res) => {
   try {
     const services = await getServices();
-    console.log('Services to be rendered:', services);
+    // console.log('Services to be rendered:', services);
     res.render('index', { services });
   } catch (error) {
     console.error('Error in root route:', error);
@@ -137,7 +155,7 @@ app.get('/booking-form', async (req, res) => {
     const services = await getServices();
     const service = services.find(s => s.title === req.query.service);
     if (service) {
-      console.log('Service for booking form:', service);
+      // console.log('Service for booking form:', service);
       const settings = await getSettings();
       res.render('booking-form', { service, whatsappNumber: settings.whatsapp_number });
     } else {
@@ -155,7 +173,7 @@ app.get('/booking-form', async (req, res) => {
   }
 });
 
-app.post('/submit-booking', async (req, res) => {
+app.post('/submit-booking', submitLimiter, async (req, res) => {
   try {
     const { service, date, addons, options, name, whatsappNumber, email } = req.body;
     const services = await getServices();
@@ -208,22 +226,8 @@ app.post('/submit-booking', async (req, res) => {
     bookings.push(booking);
     await fs.writeFile(bookingsPath, JSON.stringify(bookings, null, 2));
 
-    // Prepare WhatsApp message
-    const settings = await getSettings();
-    const businessWhatsappNumber = settings.whatsapp_number;
-    const message = `New Booking:
-Name: ${name}
-WhatsApp: ${whatsappNumber}
-Email: ${email}
-Service: ${service}
-Date: ${date}
-Addons: ${addonDetails.join(', ') || 'None'}
-Options: ${Object.entries(options).map(([key, value]) => `${key}: ${value}`).join(', ')}
-Total Price: $${totalPrice}`;
-
-    const whatsappUrl = `https://wa.me/${businessWhatsappNumber}?text=${encodeURIComponent(message)}`;
-
-    res.redirect(whatsappUrl);
+    // Render the booking success page with the booking ID
+    res.render('booking-success', { bookingId: booking.id });
   } catch (error) {
     console.error('Error submitting booking:', error);
     res.status(500).render('error', { 
@@ -234,18 +238,59 @@ Total Price: $${totalPrice}`;
 });
 
 app.get('/booking-report', async (req, res) => {
-  try {
-    await initializeBookingsFile();
-    const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
-    const bookingsData = await fs.readFile(bookingsPath, 'utf-8');
-    const bookings = JSON.parse(bookingsData);
-    res.render('booking-report', { bookings });
-  } catch (error) {
-    console.error('Error in booking report route:', error);
-    res.status(500).render('error', { 
-      message: 'An error occurred while loading the booking report',
-      error: error
-    });
+  if (req.session.isAuthenticated) {
+    try {
+      await initializeBookingsFile();
+      const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
+      const bookingsData = await fs.readFile(bookingsPath, 'utf-8');
+      const bookings = JSON.parse(bookingsData);
+      res.render('booking-report', { bookings });
+    } catch (error) {
+      console.error('Error in booking report route:', error);
+      res.status(500).render('error', { 
+        message: 'An error occurred while loading the booking report',
+        error: error
+      });
+    }
+  } else {
+    res.render('login');
+  }
+});
+
+app.post('/login', async (req, res) => {
+  const { password } = req.body;
+  const settings = await getSettings();
+  
+  if (await bcrypt.compare(password, settings.reportPassword)) {
+    req.session.isAuthenticated = true;
+    res.redirect('/booking-report');
+  } else {
+    res.render('login', { error: 'Invalid password' });
+  }
+});
+
+app.get('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    res.redirect('/');
+  });
+});
+
+app.get('/track-booking', (req, res) => {
+  res.render('track-booking');
+});
+
+app.post('/track-booking', async (req, res) => {
+  const { bookingId } = req.body;
+  const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
+  const bookingsData = await fs.readFile(bookingsPath, 'utf-8');
+  const bookings = JSON.parse(bookingsData);
+  
+  const booking = bookings.find(b => b.id === bookingId);
+  
+  if (booking) {
+    res.render('booking-details', { booking });
+  } else {
+    res.render('track-booking', { error: 'Booking not found' });
   }
 });
 

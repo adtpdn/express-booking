@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking Details</title>
+    <link href="/styles/style.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-6">Booking Details</h1>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <p><strong>Booking ID:</strong> <%= booking.id %></p>
+            <p><strong>Name:</strong> <%= booking.name %></p>
+            <p><strong>Service:</strong> <%= booking.serviceTitle %></p>
+            <p><strong>Date:</strong> <%= booking.date %></p>
+            <p><strong>Status:</strong> <%= booking.status %></p>
+            <p><strong>Total Price:</strong> $<%= booking.totalPrice.toFixed(2) %></p>
+            
+            <% if (booking.addons && booking.addons.length > 0) { %>
+                <h3 class="text-lg font-semibold mt-4 mb-2">Addons:</h3>
+                <ul>
+                    <% booking.addons.forEach(addon => { %>
+                        <li><%= addon.name %> - $<%= addon.price.toFixed(2) %></li>
+                    <% }); %>
+                </ul>
+            <% } %>
+            
+            <% if (booking.options) { %>
+                <h3 class="text-lg font-semibold mt-4 mb-2">Options:</h3>
+                <ul>
+                    <% Object.entries(booking.options).forEach(([key, value]) => { %>
+                        <li><strong><%= key %>:</strong> <%= value %></li>
+                    <% }); %>
+                </ul>
+            <% } %>
+        </div>
+    </div>
+</body>
+</html>
