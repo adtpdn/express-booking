@@ -2,7 +2,6 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const markdown = require('markdown-it')();
-const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const { webcrypto } = require('crypto');
@@ -35,6 +34,37 @@ const submitLimiter = rateLimit({
   max: 5, // limit each IP to 5 requests per windowMs
   message: 'Too many booking attempts, please try again later.'
 });
+
+// Add this to store captchas (in a real application, you might want to use a database)
+const captchas = new Map();
+
+// Add this function to generate a captcha
+function generateCaptcha() {
+  const num1 = Math.floor(Math.random() * 10) + 1;
+  const num2 = Math.floor(Math.random() * 10) + 1;
+  const sum = num1 + num2;
+  const idArray = new Uint8Array(16);
+  webcrypto.getRandomValues(idArray);
+  const id = Array.from(idArray, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return {
+    id,
+    question: `What is ${num1} + ${num2}?`,
+    answer: sum,
+    createdAt: Date.now()
+  };
+}
+
+function cleanupCaptchas() {
+  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+  for (const [id, captcha] of captchas.entries()) {
+    if (captcha.createdAt < fiveMinutesAgo) {
+      captchas.delete(id);
+    }
+  }
+}
+
+// Call this function periodically, e.g., every 5 minutes
+setInterval(cleanupCaptchas, 5 * 60 * 1000);
 
 // Function to hash password
 async function hashPassword(password) {
@@ -112,6 +142,18 @@ async function getServices() {
   }
 }
 
+// Add this new function to generate a short ID
+function generateShortId() {
+  const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded I, O, 0, 1 for clarity
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result;
+}
+
+// Parse the Service from Markdown
+
 function parseServiceMarkdown(content) {
   const lines = content.split('\n');
   const service = {
@@ -119,6 +161,7 @@ function parseServiceMarkdown(content) {
     description: '',
     price: 0,
     thumbnail: '',
+    category: '',
     addons: [],
     options: []
   };
@@ -138,6 +181,8 @@ function parseServiceMarkdown(content) {
       }
     } else if (line.startsWith('Thumbnail: ')) {
       service.thumbnail = line.slice(11);
+    } else if (line.startsWith('Category: ')) {
+      service.category = line.slice(10);
     } else if (line === '### Addons:') {
       currentSection = 'addons';
     } else if (line === '### Options:') {
@@ -169,7 +214,6 @@ function parseServiceMarkdown(content) {
     }
   });
 
-  // console.log('Parsed service:', service);
   return service;
 }
 
@@ -225,9 +269,14 @@ app.get('/booking-form', async (req, res) => {
     const services = await getServices();
     const service = services.find(s => s.title === req.query.service);
     if (service) {
-      // console.log('Service for booking form:', service);
       const settings = await getSettings();
-      res.render('booking-form', { service, whatsappNumber: settings.whatsapp_number });
+      const captcha = generateCaptcha();
+      captchas.set(captcha.id, captcha);  // Store the entire captcha object
+      res.render('booking-form', { 
+        service, 
+        whatsappNumber: settings.whatsapp_number,
+        captcha: { id: captcha.id, question: captcha.question }
+      });
     } else {
       res.status(404).render('error', { 
         message: 'Service not found',
@@ -245,7 +294,19 @@ app.get('/booking-form', async (req, res) => {
 
 app.post('/submit-booking', submitLimiter, async (req, res) => {
   try {
-    const { service, date, addons, options, name, whatsappNumber, email } = req.body;
+    const { service, date, addons, options, name, whatsappNumber, email, captcha, captchaId } = req.body;
+
+    // Verify captcha
+    const captchaObj = captchas.get(captchaId);
+    captchas.delete(captchaId); // Remove used captcha
+
+    if (!captchaObj || parseInt(captcha) !== captchaObj.answer) {
+      return res.status(400).render('error', {
+        message: 'Invalid captcha. Please try again.',
+        error: null
+      });
+    }
+
     const services = await getServices();
     const selectedService = services.find(s => s.title === service);
     
@@ -272,8 +333,20 @@ app.post('/submit-booking', submitLimiter, async (req, res) => {
       }
     });
 
+    // Generate a unique short ID
+    let shortId;
+    let isUnique = false;
+    const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
+    const bookingsData = await fs.readFile(bookingsPath, 'utf-8');
+    const bookings = JSON.parse(bookingsData);
+
+    while (!isUnique) {
+      shortId = generateShortId();
+      isUnique = !bookings.some(booking => booking.id === shortId);
+    }
+
     const booking = {
-      id: uuidv4(),
+      id: shortId,
       name,
       whatsappNumber,
       email,
@@ -289,15 +362,16 @@ app.post('/submit-booking', submitLimiter, async (req, res) => {
     };
 
     // Save booking to JSON file
-    await initializeBookingsFile();
-    const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
-    const bookingsData = await fs.readFile(bookingsPath, 'utf-8');
-    const bookings = JSON.parse(bookingsData);
     bookings.push(booking);
     await fs.writeFile(bookingsPath, JSON.stringify(bookings, null, 2));
 
-    // Render the booking success page with the booking ID
-    res.render('booking-success', { bookingId: booking.id });
+    // Prepare WhatsApp message
+    const settings = await getSettings();
+    const whatsappMessage = encodeURIComponent(`Hello! I'd like to confirm my booking:\n\nBooking ID: ${booking.id}\nService: ${booking.serviceTitle}\nDate: ${booking.date}\nTotal Price: $${booking.totalPrice}\n\nThank you!`);
+    const whatsappUrl = `https://wa.me/${settings.whatsapp_number}?text=${whatsappMessage}`;
+
+    // Redirect to a success page instead of rendering
+    res.redirect(`/booking-success?id=${booking.id}&whatsapp=${encodeURIComponent(whatsappUrl)}`);
   } catch (error) {
     console.error('Error submitting booking:', error);
     res.status(500).render('error', { 
@@ -305,6 +379,16 @@ app.post('/submit-booking', submitLimiter, async (req, res) => {
       error: error
     });
   }
+});
+
+app.get('/booking-success', (req, res) => {
+  const { id, whatsapp } = req.query;
+  
+  if (!id) {
+    return res.redirect('/');  // Redirect to home if no booking ID is provided
+  }
+
+  res.render('booking-success', { bookingId: id, whatsappUrl: whatsapp });
 });
 
 app.get('/booking-report', async (req, res) => {

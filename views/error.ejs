@@ -7,6 +7,8 @@
     <link href="/styles/style.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100">
+    <%- include('partials/navbar') %>
+
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold mb-6 text-red-600">Error</h1>
         <p class="mb-4"><%= message %></p>
@@ -15,5 +17,6 @@
         <% } %>
         <a href="/" class="mt-4 inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Go Back Home</a>
     </div>
+    <script src="/js/navbar.js"></script>
 </body>
 </html>

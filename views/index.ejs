@@ -6,16 +6,44 @@
     <title>Services</title>
     <link href="/styles/style.css" rel="stylesheet">
 </head>
+
 <body class="bg-gray-100">
+    <%- include('partials/navbar') %>
+
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold mb-6">Our Services</h1>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        
+        <!-- Search and filter container -->
+        <div class="flex flex-col md:flex-row justify-between items-start mb-6 gap-4">
+            <!-- Category filter -->
+            <div class="w-full md:w-auto">
+                <!-- <label for="category-filter" class="block mb-2 font-semibold">Filter by Category:</label> -->
+                <select id="category-filter" class="w-full md:min-w-[300px] p-2 border rounded">
+                    <option value="all">All Categories</option>
+                    <% 
+                    const categories = [...new Set(services.map(s => s.category))];
+                    categories.forEach(category => { 
+                    %>
+                        <option value="<%= category %>"><%= category %></option>
+                    <% }); %>
+                </select>
+            </div>
+
+            <!-- Search bar -->
+            <div class="w-full md:w-auto">
+                <!-- <label for="search-bar" class="block mb-2 font-semibold">Search Services:</label> -->
+                <input type="text" id="search-bar" placeholder="Search services..." class="w-full md:min-w-[350px] p-2 border rounded">
+            </div>
+        </div>
+
+        <div id="services-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <% services.forEach(service => { %>
-                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div class="bg-white rounded-lg shadow-md overflow-hidden service-card" data-category="<%= service.category %>">
                     <img src="<%= service.thumbnail %>" alt="<%= service.title %>" class="w-full h-48 object-cover">
                     <div class="p-4">
                         <h2 class="text-xl font-semibold mb-2"><%= service.title %></h2>
-                        <p class="text-gray-600 mb-4"><%= service.description %></p>
+                        <p class="text-gray-600 mb-2"><%= service.description %></p>
+                        <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10 mb-4"><%= service.category %></span>
                         <p class="text-lg font-bold mb-4">Price: $<%= service.price %></p>
                         <a href="/booking-form?service=<%= encodeURIComponent(service.title) %>" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Book Now</a>
                     </div>
@@ -23,5 +51,36 @@
             <% }); %>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchBar = document.getElementById('search-bar');
+            const categoryFilter = document.getElementById('category-filter');
+            const serviceCards = document.querySelectorAll('.service-card');
+
+            function filterServices() {
+                const searchTerm = searchBar.value.toLowerCase();
+                const selectedCategory = categoryFilter.value;
+
+                serviceCards.forEach(card => {
+                    const title = card.querySelector('h2').textContent.toLowerCase();
+                    const category = card.dataset.category;
+                    const matchesSearch = title.includes(searchTerm);
+                    const matchesCategory = selectedCategory === 'all' || category === selectedCategory;
+
+                    if (matchesSearch && matchesCategory) {
+                        card.style.display = '';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
+
+            searchBar.addEventListener('input', filterServices);
+            categoryFilter.addEventListener('change', filterServices);
+        });
+    </script>
+
+    <script src="/js/navbar.js"></script>
 </body>
 </html>

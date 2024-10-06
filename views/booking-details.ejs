@@ -7,15 +7,30 @@
     <link href="/styles/style.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100">
+    <%- include('partials/navbar') %>
+
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold mb-6">Booking Details</h1>
         
         <div class="bg-white rounded-lg shadow-md p-6">
             <p><strong>Booking ID:</strong> <%= booking.id %></p>
+            <p class="md-4"><strong>Status:</strong> 
+                <% if (booking.status === 'pending') { %>
+                    <span class="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-800 ring-1 ring-inset ring-yellow-600/20">PENDING</span>
+                  <% } else if (booking.status === 'in-progress') { %>
+                    <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">IN-PROGRESS</span>
+                  <% } else if (booking.status === 'completed') { %>
+                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">COMPLETED</span>
+                  <% } else if (booking.status === 'cancelled') { %>
+                    <span class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10">CANCELLED</span>
+                  <% } else { %>
+                    <%= booking.status %>
+                  <% } %>
+            </p>
             <p><strong>Name:</strong> <%= booking.name %></p>
             <p><strong>Service:</strong> <%= booking.serviceTitle %></p>
             <p><strong>Date:</strong> <%= booking.date %></p>
-            <p><strong>Status:</strong> <%= booking.status %></p>
+
             <p><strong>Total Price:</strong> $<%= booking.totalPrice.toFixed(2) %></p>
             
             <% if (booking.addons && booking.addons.length > 0) { %>
@@ -37,5 +52,6 @@
             <% } %>
         </div>
     </div>
+    <script src="/js/navbar.js"></script>
 </body>
 </html>

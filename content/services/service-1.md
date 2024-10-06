@@ -4,6 +4,7 @@ Capture your special moments with our professional photography service.
 ## Price: $199.99
 
 Thumbnail: https://placehold.co/600x400?text=Placeholder
+Category: Photography
 
 ### Addons:
 

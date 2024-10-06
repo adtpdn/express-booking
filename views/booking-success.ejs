@@ -7,12 +7,27 @@
     <link href="/styles/style.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100">
+    <%- include('partials/navbar') %>
+
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold mb-6">Booking Successful</h1>
         <p class="mb-4">Your booking has been confirmed. Your booking ID is:</p>
         <p class="text-2xl font-bold mb-6"><%= bookingId %></p>
-        <p>Please save this ID for future reference. You can use it to track your booking status.</p>
-        <a href="/track-booking" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 inline-block mt-4">Track Your Booking</a>
+        <p class="mb-6">Please save this ID for future reference. You can use it to track your booking status.</p>
+        <div class="space-x-4">
+            <a href="/track-booking" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 inline-block transition duration-300">Track Your Booking</a>
+            <a href="<%= whatsappUrl %>" id="whatsappButton" target="_blank" rel="noopener noreferrer" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 inline-block transition duration-300">
+                Send WhatsApp Message
+            </a>
+        </div>
     </div>
+
+    <script>
+        document.getElementById('whatsappButton').addEventListener('click', function(e) {
+            e.preventDefault();
+            window.open(this.href, '_blank');
+        });
+    </script>
+    <script src="/js/navbar.js"></script>
 </body>
 </html>

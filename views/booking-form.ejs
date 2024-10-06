@@ -6,7 +6,10 @@
     <title>Booking Form - <%= service.title %></title>
     <link href="/styles/style.css" rel="stylesheet">
 </head>
+
 <body class="bg-gray-100">
+    <%- include('partials/navbar') %>
+
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold mb-6"><%= service.title %></h1>
         
@@ -72,7 +75,11 @@
                     <% }); %>
                 </div>
             <% } %>
-
+            <div class="mb-4">
+                <label for="captcha" class="block text-gray-700 text-sm font-bold mb-2"><%= captcha.question %></label>
+                <input type="number" id="captcha" name="captcha" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                <input type="hidden" name="captchaId" value="<%= captcha.id %>">
+              </div>
             <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Book Now</button>
         </form>
     </div>
@@ -106,5 +113,7 @@
             updateTotalPrice(); // Initial calculation
         });
     </script>
+
+    <script src="/js/navbar.js"></script>
 </body>
 </html>
