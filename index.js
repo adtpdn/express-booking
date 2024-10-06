@@ -2,7 +2,6 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const markdown = require('markdown-it')();
-const { exec } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
@@ -36,48 +35,80 @@ async function getServices() {
     const services = [];
 
     for (const file of files) {
-      if (path.extname(file) === '.md') {
-        const content = await fs.readFile(path.join(servicesDir, file), 'utf-8');
+      if (path.extname(file).toLowerCase() === '.md') {
+        const filePath = path.join(servicesDir, file);
+        const content = await fs.readFile(filePath, 'utf-8');
         const service = parseServiceMarkdown(content);
         services.push(service);
       }
     }
 
+    console.log('Parsed services:', services);
     return services;
   } catch (error) {
     console.error('Error reading services:', error);
-    return []; // Return an empty array if there's an error
+    return [];
   }
 }
 
 function parseServiceMarkdown(content) {
-  const html = markdown.render(content);
-  const lines = html.split('\n');
+  const lines = content.split('\n');
   const service = {
-    title: 'Default Title',
-    description: 'Default Description',
-    price: 100,
-    thumbnail: '/images/default.jpg',
+    title: '',
+    description: '',
+    price: 0,
+    thumbnail: '',
     addons: [],
+    options: []
   };
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line.startsWith('<h1>') && line.endsWith('</h1>')) {
-      service.title = line.slice(4, -5);
-    } else if (i === 1 && !line.startsWith('<')) {
-      service.description = line;
-    } else if (line.startsWith('<h2>Price: $') && line.endsWith('</h2>')) {
-      service.price = parseFloat(line.slice(12, -5));
-    } else if (line.startsWith('<p>Thumbnail: ') && line.endsWith('</p>')) {
-      service.thumbnail = line.slice(13, -4);
-    } else if (line.startsWith('<li>') && line.endsWith('</li>')) {
-      const addonStr = line.slice(4, -5);
-      const [name, price] = addonStr.split(': $');
-      service.addons.push({ name, price: parseFloat(price) });
-    }
-  }
+  let currentSection = '';
 
+  lines.forEach((line, index) => {
+    line = line.trim();
+    if (line.startsWith('# ')) {
+      service.title = line.slice(2);
+    } else if (index === 1) {
+      service.description = line;
+    } else if (line.startsWith('## ') && line.toLowerCase().includes('price')) {
+      const priceMatch = line.match(/\$(\d+(\.\d{1,2})?)/);
+      if (priceMatch) {
+        service.price = parseFloat(priceMatch[1]);
+      }
+    } else if (line.startsWith('Thumbnail: ')) {
+      service.thumbnail = line.slice(11);
+    } else if (line === '### Addons:') {
+      currentSection = 'addons';
+    } else if (line === '### Options:') {
+      currentSection = 'options';
+    } else if (currentSection === 'addons' && line.startsWith('- ')) {
+      const [name, priceStr] = line.slice(2).split(': $');
+      const description = lines[index + 1].trim().slice(12);
+      service.addons.push({
+        name,
+        price: parseFloat(priceStr),
+        description
+      });
+    } else if (currentSection === 'options' && line.startsWith('- ')) {
+      const match = line.match(/- \[(.*?)\] (.*?)( \(required\))?: (.*)/);
+      if (match) {
+        const values = match[4].split(', ').map(v => {
+          const priceMatch = v.match(/(.*?) \(\+?\$([\d.]+)\)/);
+          return priceMatch 
+            ? { name: priceMatch[1], price: parseFloat(priceMatch[2]) }
+            : { name: v, price: 0 };
+        });
+        service.options.push({
+          type: match[1],
+          name: match[2],
+          required: !!match[3],
+          values: values
+        });
+      }
+    }
+  });
+
+  console.log('Parsed service:', service);
   return service;
 }
 
@@ -90,6 +121,7 @@ async function getSettings() {
 app.get('/', async (req, res) => {
   try {
     const services = await getServices();
+    console.log('Services to be rendered:', services);
     res.render('index', { services });
   } catch (error) {
     console.error('Error in root route:', error);
@@ -105,6 +137,7 @@ app.get('/booking-form', async (req, res) => {
     const services = await getServices();
     const service = services.find(s => s.title === req.query.service);
     if (service) {
+      console.log('Service for booking form:', service);
       const settings = await getSettings();
       res.render('booking-form', { service, whatsappNumber: settings.whatsapp_number });
     } else {
@@ -124,7 +157,7 @@ app.get('/booking-form', async (req, res) => {
 
 app.post('/submit-booking', async (req, res) => {
   try {
-    const { service, date, addons } = req.body;
+    const { service, date, addons, options, name, whatsappNumber, email } = req.body;
     const services = await getServices();
     const selectedService = services.find(s => s.title === service);
     
@@ -140,14 +173,29 @@ app.post('/submit-booking', async (req, res) => {
       return `${addonInfo.name}: $${addonInfo.price}`;
     });
 
+    // Calculate price from options
+    Object.entries(options).forEach(([optionName, selectedValue]) => {
+      const option = selectedService.options.find(o => o.name === optionName);
+      if (option) {
+        const selectedOptionValue = option.values.find(v => v.name === selectedValue);
+        if (selectedOptionValue) {
+          totalPrice += selectedOptionValue.price;
+        }
+      }
+    });
+
     const booking = {
       id: uuidv4(),
+      name,
+      whatsappNumber,
+      email,
       serviceTitle: service,
       date,
       addons: selectedAddons.map(addon => {
         const addonInfo = selectedService.addons.find(a => a.name === addon);
         return { name: addon, price: addonInfo.price };
       }),
+      options,
       totalPrice,
       status: 'pending'
     };
@@ -162,14 +210,18 @@ app.post('/submit-booking', async (req, res) => {
 
     // Prepare WhatsApp message
     const settings = await getSettings();
-    const whatsappNumber = settings.whatsapp_number;
+    const businessWhatsappNumber = settings.whatsapp_number;
     const message = `New Booking:
+Name: ${name}
+WhatsApp: ${whatsappNumber}
+Email: ${email}
 Service: ${service}
 Date: ${date}
 Addons: ${addonDetails.join(', ') || 'None'}
+Options: ${Object.entries(options).map(([key, value]) => `${key}: ${value}`).join(', ')}
 Total Price: $${totalPrice}`;
 
-    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+    const whatsappUrl = `https://wa.me/${businessWhatsappNumber}?text=${encodeURIComponent(message)}`;
 
     res.redirect(whatsappUrl);
   } catch (error) {
@@ -218,6 +270,26 @@ app.post('/update-booking-status', async (req, res) => {
   }
 });
 
+app.post('/delete-booking', async (req, res) => {
+  try {
+    const { id } = req.body;
+    const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
+    const bookingsData = await fs.readFile(bookingsPath, 'utf-8');
+    let bookings = JSON.parse(bookingsData);
+    
+    const updatedBookings = bookings.filter(b => b.id !== id);
+    if (bookings.length !== updatedBookings.length) {
+      await fs.writeFile(bookingsPath, JSON.stringify(updatedBookings, null, 2));
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+  } catch (error) {
+    console.error('Error deleting booking:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while deleting the booking' });
+  }
+});
+
 app.get('/get-settings', async (req, res) => {
   try {
     const settings = await getSettings();
@@ -245,16 +317,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Build CSS before starting the server
-exec('npm run build:css', (error, stdout, stderr) => {
-  if (error) {
-    console.error(`Error building CSS: ${error}`);
-    return;
-  }
-  console.log(`CSS build output: ${stdout}`);
-  
-  // Start the server after CSS is built
-  app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-  });
+// Start the server
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
 });

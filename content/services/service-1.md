@@ -1,10 +1,21 @@
-# Sample Service
+# Professional Photography Session
 
-This is a sample service description.
+Capture your special moments with our professional photography service.
 
-## Price: $100
+## Price: $199.99
 
-Thumbnail: /images/sample.jpg
+Thumbnail: /images/photography-session.jpg
 
-- Addon 1: $20
-- Addon 2: $30
+### Addons:
+
+- Extra Hour: $50
+  Description: Extend your session by an additional hour for more photos.
+
+- Digital Album: $30
+  Description: Receive a curated digital album of your best shots.
+
+### Options:
+
+- [Dropdown] Location (required): Studio (0), Outdoor (+$20), Client's Choice (+$50)
+- [Dropdown] Session Type: Portrait (0), Family (+$30), Pet (+$20), Event (+$100)
+- [Text] Special Requests

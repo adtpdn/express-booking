@@ -14,6 +14,9 @@
                 <thead>
                     <tr class="bg-gray-200">
                         <th class="px-4 py-2">ID</th>
+                        <th class="px-4 py-2">Name</th>
+                        <th class="px-4 py-2">WhatsApp</th>
+                        <th class="px-4 py-2">Email</th>
                         <th class="px-4 py-2">Service</th>
                         <th class="px-4 py-2">Date</th>
                         <th class="px-4 py-2">Total Price</th>
@@ -25,13 +28,21 @@
                     <% bookings.forEach(booking => { %>
                         <tr>
                             <td class="border px-4 py-2"><%= booking.id %></td>
+                            <td class="border px-4 py-2"><%= booking.name %></td>
+                            <td class="border px-4 py-2"><%= booking.whatsappNumber %></td>
+                            <td class="border px-4 py-2"><%= booking.email %></td>
                             <td class="border px-4 py-2"><%= booking.serviceTitle %></td>
                             <td class="border px-4 py-2"><%= booking.date %></td>
                             <td class="border px-4 py-2">$<%= booking.totalPrice %></td>
                             <td class="border px-4 py-2"><%= booking.status %></td>
                             <td class="border px-4 py-2">
-                                <button onclick="updateStatus('<%= booking.id %>', 'completed')" class="bg-green-500 text-white px-2 py-1 rounded mr-2">Mark Completed</button>
-                                <button onclick="updateStatus('<%= booking.id %>', 'cancelled')" class="bg-red-500 text-white px-2 py-1 rounded">Cancel</button>
+                                <select onchange="updateStatus('<%= booking.id %>', this.value)" class="mb-2">
+                                    <option value="pending" <%= booking.status === 'pending' ? 'selected' : '' %>>Pending</option>
+                                    <option value="in-progress" <%= booking.status === 'in-progress' ? 'selected' : '' %>>In Progress</option>
+                                    <option value="completed" <%= booking.status === 'completed' ? 'selected' : '' %>>Completed</option>
+                                    <option value="cancelled" <%= booking.status === 'cancelled' ? 'selected' : '' %>>Cancelled</option>
+                                </select>
+                                <button onclick="deleteBooking('<%= booking.id %>')" class="bg-red-500 text-white px-2 py-1 rounded">Delete</button>
                             </td>
                         </tr>
                     <% }); %>
@@ -56,6 +67,26 @@
                     alert('Failed to update status');
                 }
             });
+        }
+
+        function deleteBooking(id) {
+            if (confirm('Are you sure you want to delete this booking?')) {
+                fetch('/delete-booking', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ id }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert('Failed to delete booking');
+                    }
+                });
+            }
         }
     </script>
 </body>
