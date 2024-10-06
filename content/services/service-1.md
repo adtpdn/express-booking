@@ -1,10 +1,9 @@
 # Professional Photography Session
-
 Capture your special moments with our professional photography service.
 
 ## Price: $199.99
 
-Thumbnail: /images/photography-session.jpg
+Thumbnail: https://placehold.co/600x400?text=Placeholder
 
 ### Addons:
 

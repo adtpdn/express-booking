@@ -5,7 +5,7 @@ const markdown = require('markdown-it')();
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
-const bcrypt = require('bcrypt');
+const { webcrypto } = require('crypto');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -23,7 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Set up session middleware
 app.use(session({
-  secret: 'your-secret-key',
+  secret: process.env.SESSION_SECRET || 'fallback-secret-key',
   resave: false,
   saveUninitialized: true,
   cookie: { secure: process.env.NODE_ENV === 'production' }
@@ -35,6 +35,49 @@ const submitLimiter = rateLimit({
   max: 5, // limit each IP to 5 requests per windowMs
   message: 'Too many booking attempts, please try again later.'
 });
+
+// Function to hash password
+async function hashPassword(password) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const salt = webcrypto.getRandomValues(new Uint8Array(16));
+    const key = await webcrypto.subtle.importKey('raw', data, 'PBKDF2', false, ['deriveBits']);
+    const derivedBits = await webcrypto.subtle.deriveBits(
+        {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000,
+            hash: 'SHA-256'
+        },
+        key,
+        256
+    );
+    const hashArray = Array.from(new Uint8Array(derivedBits));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return `${Buffer.from(salt).toString('hex')}:${hashHex}`;
+}
+
+// Function to verify password
+async function verifyPassword(storedPassword, inputPassword) {
+    const [saltHex, storedHash] = storedPassword.split(':');
+    const salt = Uint8Array.from(Buffer.from(saltHex, 'hex'));
+    const encoder = new TextEncoder();
+    const data = encoder.encode(inputPassword);
+    const key = await webcrypto.subtle.importKey('raw', data, 'PBKDF2', false, ['deriveBits']);
+    const derivedBits = await webcrypto.subtle.deriveBits(
+        {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000,
+            hash: 'SHA-256'
+        },
+        key,
+        256
+    );
+    const hashArray = Array.from(new Uint8Array(derivedBits));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return storedHash === hashHex;
+}
 
 async function initializeBookingsFile() {
   const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
@@ -135,6 +178,33 @@ async function getSettings() {
   const settingsData = await fs.readFile(settingsPath, 'utf-8');
   return JSON.parse(settingsData);
 }
+
+async function updateSettings(newSettings) {
+  const settingsPath = path.join(__dirname, 'content', 'settings.json');
+  await fs.writeFile(settingsPath, JSON.stringify(newSettings, null, 2));
+}
+
+// Route to set or update password
+app.get('/set-password', async (req, res) => {
+  const newPassword = req.query.password;
+
+  if (!newPassword || newPassword.length < 8) {
+      return res.status(400).send('Password must be at least 8 characters long');
+  }
+
+  try {
+      const hashedPassword = await hashPassword(newPassword);
+      
+      const settings = await getSettings();
+      settings.reportPassword = hashedPassword;
+      await updateSettings(settings);
+      
+      res.send(`New password has been set and saved to settings.json`);
+  } catch (error) {
+      console.error('Error setting new password:', error);
+      res.status(500).send('An error occurred while setting the new password');
+  }
+});
 
 app.get('/', async (req, res) => {
   try {
@@ -261,11 +331,16 @@ app.post('/login', async (req, res) => {
   const { password } = req.body;
   const settings = await getSettings();
   
-  if (await bcrypt.compare(password, settings.reportPassword)) {
-    req.session.isAuthenticated = true;
-    res.redirect('/booking-report');
-  } else {
-    res.render('login', { error: 'Invalid password' });
+  try {
+    if (await verifyPassword(settings.reportPassword, password)) {
+      req.session.isAuthenticated = true;
+      res.redirect('/booking-report');
+    } else {
+      res.render('login', { error: 'Invalid password' });
+    }
+  } catch (error) {
+    console.error('Error verifying password:', error);
+    res.status(500).send('An error occurred while verifying the password');
   }
 });
 
