@@ -12,25 +12,25 @@
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold mb-6">Booking Details</h1>
         
-        <div class="bg-white rounded-lg shadow-md p-6">
+        <!-- Booking information -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
             <p><strong>Booking ID:</strong> <%= booking.id %></p>
-            <p class="md-4"><strong>Status:</strong> 
+            <p class="mb-4"><strong>Status:</strong> 
                 <% if (booking.status === 'pending') { %>
                     <span class="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-800 ring-1 ring-inset ring-yellow-600/20">PENDING</span>
-                  <% } else if (booking.status === 'in-progress') { %>
+                <% } else if (booking.status === 'in-progress') { %>
                     <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">IN-PROGRESS</span>
-                  <% } else if (booking.status === 'completed') { %>
+                <% } else if (booking.status === 'completed') { %>
                     <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">COMPLETED</span>
-                  <% } else if (booking.status === 'cancelled') { %>
+                <% } else if (booking.status === 'cancelled') { %>
                     <span class="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10">CANCELLED</span>
-                  <% } else { %>
+                <% } else { %>
                     <%= booking.status %>
-                  <% } %>
+                <% } %>
             </p>
             <p><strong>Name:</strong> <%= booking.name %></p>
             <p><strong>Service:</strong> <%= booking.serviceTitle %></p>
             <p><strong>Date:</strong> <%= booking.date %></p>
-
             <p><strong>Total Price:</strong> $<%= booking.totalPrice.toFixed(2) %></p>
             
             <% if (booking.addons && booking.addons.length > 0) { %>
@@ -51,7 +51,66 @@
                 </ul>
             <% } %>
         </div>
+
+        <!-- Comments section -->
+        <div class="bg-white shadow-md rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-semibold mb-4">Comments</h2>
+            
+            <div class="space-y-6">
+                <% if (!comments || comments.length === 0) { %>
+                    <p>No comments yet.</p>
+                <% } else { %>
+                    <% comments.forEach(comment => { %>
+                        <div class="flex <%= comment.isAdmin ? 'justify-end' : 'justify-start' %> items-start space-x-3">
+                            <% if (!comment.isAdmin) { %>
+                                <img src="https://placehold.co/100x100/EEE/31343C?font=roboto&text=C" alt="Client" class="w-10 h-10 rounded-full flex-shrink-0">
+                            <% } %>
+                            <div class="flex flex-col <%= comment.isAdmin ? 'items-end' : 'items-start' %> max-w-[70%]">
+                                <div class="<%= comment.isAdmin ? 'bg-green-100 rounded-tl-3xl rounded-tr-3xl rounded-bl-3xl' : 'bg-white border rounded-tl-3xl rounded-tr-3xl rounded-br-3xl' %> p-3 shadow-sm">
+                                    <p class="text-sm break-words"><%= comment.content %></p>
+                                    <% if (comment.imagePaths) { %>
+                                        <a href="<%= comment.imagePaths.fullSize %>" target="_blank" class="block mt-2">
+                                            <img src="<%= comment.imagePaths.thumbnail %>" alt="Comment image" class="max-w-full h-auto rounded-lg">
+                                        </a>
+                                    <% } %>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    <%= new Date(comment.createdAt).toLocaleString() %>
+                                </p>
+                                <% if (canDelete) { %>
+                                    <form action="/booking-details/<%= booking.id %>/comment/<%= comment.id %>/delete" method="POST" class="mt-1">
+                                        <button type="submit" class="text-red-500 hover:underline text-xs">Delete</button>
+                                    </form>
+                                <% } %>
+                            </div>
+                            <% if (comment.isAdmin) { %>
+                                <img src="https://placehold.co/100x100/EEE/31343C?font=roboto&text=A" alt="Admin" class="w-10 h-10 rounded-full flex-shrink-0">
+                            <% } %>
+                        </div>
+                    <% }) %>
+                <% } %>
+            </div>
+        </div>
+
+        <% if (canComment) { %>
+            <!-- Comment form -->
+            <div class="bg-white shadow-md rounded-lg p-6">
+                <h2 class="text-2xl font-semibold mb-4">Add a Comment</h2>
+                <form action="/booking-details/<%= booking.id %>/comment" method="POST" enctype="multipart/form-data">
+                    <div class="mb-4">
+                        <label for="content" class="block mb-2">Your comment:</label>
+                        <textarea id="content" name="content" rows="4" class="w-full p-2 border rounded" required></textarea>
+                    </div>
+                    <div class="mb-4">
+                        <label for="image" class="block mb-2">Upload an image (optional):</label>
+                        <input type="file" id="image" name="image" accept="image/*" class="w-full p-2 border rounded">
+                    </div>
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Submit Comment</button>
+                </form>
+            </div>
+        <% } %>
     </div>
+
     <script src="/js/navbar.js"></script>
 </body>
 </html>

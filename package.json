@@ -1,7 +1,7 @@
 {
   "name": "express-booking",
-  "version": "1.0.0",
-  "description": "``` express-booking/ ├── content/ │   ├── services/ │   │   └── service1.md │   └── settings.json ├── data/ │   └── bookings.json ├── public/ │   ├── images/ │   ├── styles/ │   └── scripts/ ├── views/ │   ├── index.ejs │   ├── booking-form.ejs │   └── booking-report.ejs ├── index.js ├── package.json └── vercel.json ```",
+  "version": "2.0.0",
+  "description": "Simple Booking System",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -17,6 +17,8 @@
     "express-rate-limit": "^7.4.1",
     "express-session": "^1.18.0",
     "markdown-it": "^14.1.0",
+    "multer": "^1.4.5-lts.1",
+    "sharp": "^0.33.5",
     "uuid": "^10.0.0"
   },
   "devDependencies": {

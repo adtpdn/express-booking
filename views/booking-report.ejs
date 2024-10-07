@@ -51,6 +51,7 @@
                                   <% } %>
                             </td>
                             <td class="border px-4 py-2">
+                                <a href="/booking-details/<%= booking.id %>" class="text-indigo-600 hover:text-indigo-900 mr-2">View Details</a>
                                 <select onchange="updateStatus('<%= booking.id %>', this.value)" class="mb-2">
                                     <option value="pending" <%= booking.status === 'pending' ? 'selected' : '' %>>Pending</option>
                                     <option value="in-progress" <%= booking.status === 'in-progress' ? 'selected' : '' %>>In Progress</option>

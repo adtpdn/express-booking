@@ -5,6 +5,8 @@ const markdown = require('markdown-it')();
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const { webcrypto } = require('crypto');
+const multer = require('multer');
+const sharp = require('sharp');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -27,6 +29,12 @@ app.use(session({
   saveUninitialized: true,
   cookie: { secure: process.env.NODE_ENV === 'production' }
 }));
+
+// Add this middleware after your session middleware
+app.use((req, res, next) => {
+  res.locals.isAuthenticated = req.session.isAuthenticated || false;
+  next();
+});
 
 // Anti-spam protection for form submission
 const submitLimiter = rateLimit({
@@ -65,6 +73,94 @@ function cleanupCaptchas() {
 
 // Call this function periodically, e.g., every 5 minutes
 setInterval(cleanupCaptchas, 5 * 60 * 1000);
+
+// Set up multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // Limit file size to 5MB
+  },
+});
+
+async function deleteFileIfExists(filePath) {
+  try {
+    await fs.access(filePath);
+    await fs.unlink(filePath);
+    console.log(`Deleted file: ${filePath}`);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error(`Error deleting file ${filePath}:`, error);
+    }
+  }
+}
+
+// Ensure necessary directories exist
+async function ensureDirectoriesExist() {
+  const dirs = [
+    path.join(__dirname, 'uploads'),
+    path.join(__dirname, 'public', 'images', 'comments')
+  ];
+
+  for (const dir of dirs) {
+    await fs.mkdir(dir, { recursive: true });
+  }
+}
+
+// Call this function before setting up your routes
+ensureDirectoriesExist().then(() => {
+  // Your existing app setup and routes go here
+}).catch(err => {
+  console.error('Error creating directories:', err);
+  process.exit(1);
+});
+
+// Helper function to generate a unique filename
+function generateUniqueFilename(originalname) {
+  const date = new Date();
+  const timestamp = date.toISOString().replace(/[-:.]/g, "");
+  const random = Math.random().toString(36).substring(2, 15);
+  const extension = path.extname(originalname);
+  return `${timestamp}-${random}${extension}`;
+}
+
+// Helper function to save compressed image
+async function saveCompressedImage(file) {
+  const filename = generateUniqueFilename(file.originalname);
+  const outputDir = path.join(__dirname, 'public', 'images', 'comments');
+  const fullSizePath = path.join(outputDir, `full_${filename}`);
+  const thumbnailPath = path.join(outputDir, `thumb_${filename}`);
+
+  try {
+    await fs.mkdir(outputDir, { recursive: true });
+
+    // Save full-size image
+    await sharp(file.buffer)
+      .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toFile(fullSizePath);
+
+    // Save thumbnail
+    await sharp(file.buffer)
+      .resize(50, 50, { fit: 'cover' })
+      .jpeg({ quality: 70 })
+      .toFile(thumbnailPath);
+
+    // Try to delete the temporary file, but don't throw an error if it fails
+    try {
+      await fs.unlink(file.path);
+    } catch (unlinkError) {
+      console.warn('Warning: Could not delete temporary file:', unlinkError.message);
+    }
+
+    return {
+      fullSize: `/images/comments/full_${filename}`,
+      thumbnail: `/images/comments/thumb_${filename}`
+    };
+  } catch (error) {
+    console.error('Error saving compressed image:', error);
+    throw error;
+  }
+}
 
 // Function to hash password
 async function hashPassword(password) {
@@ -411,6 +507,10 @@ app.get('/booking-report', async (req, res) => {
   }
 });
 
+app.get('/login', (req, res) => {
+  res.render('login');
+});
+
 app.post('/login', async (req, res) => {
   const { password } = req.body;
   const settings = await getSettings();
@@ -418,7 +518,10 @@ app.post('/login', async (req, res) => {
   try {
     if (await verifyPassword(settings.reportPassword, password)) {
       req.session.isAuthenticated = true;
-      res.redirect('/booking-report');
+      // Redirect to the page they were trying to access, or to home if no specific page
+      const redirectTo = req.session.returnTo || '/';
+      delete req.session.returnTo;
+      res.redirect(redirectTo);
     } else {
       res.render('login', { error: 'Invalid password' });
     }
@@ -430,6 +533,9 @@ app.post('/login', async (req, res) => {
 
 app.get('/logout', (req, res) => {
   req.session.destroy((err) => {
+    if (err) {
+      console.error('Error destroying session:', err);
+    }
     res.redirect('/');
   });
 });
@@ -447,9 +553,153 @@ app.post('/track-booking', async (req, res) => {
   const booking = bookings.find(b => b.id === bookingId);
   
   if (booking) {
-    res.render('booking-details', { booking });
+    // Set the trackingBookingId in the session
+    req.session.trackingBookingId = bookingId;
+    // Redirect to the booking details page
+    res.redirect(`/booking-details/${bookingId}`);
   } else {
     res.render('track-booking', { error: 'Booking not found' });
+  }
+});
+
+// Route to view booking details
+app.get('/booking-details/:id', async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+
+    // Fetch booking data
+    const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
+    const bookingsData = await fs.readFile(bookingsPath, 'utf-8');
+    const bookings = JSON.parse(bookingsData);
+    const booking = bookings.find(b => b.id === bookingId);
+
+    if (!booking) {
+      return res.status(404).render('error', { message: 'Booking not found' });
+    }
+
+    // Fetch comments
+    let comments = [];
+    const commentsPath = path.join(__dirname, 'data', 'comments.json');
+    try {
+      const commentsData = await fs.readFile(commentsPath, 'utf-8');
+      comments = JSON.parse(commentsData).filter(c => c.bookingId === bookingId);
+    } catch (error) {
+      console.error('Error reading comments:', error);
+      // If there's an error reading comments, we'll just use an empty array
+    }
+
+    // Check if the user is authenticated or is tracking this booking
+    const isAuthenticated = req.session.isAuthenticated || false;
+    const isTrackingClient = req.session.trackingBookingId === bookingId;
+    const canViewBooking = isAuthenticated || isTrackingClient;
+
+    if (!canViewBooking) {
+      return res.status(403).render('error', { message: 'You do not have permission to view this booking' });
+    }
+
+    // Render the booking details page
+    res.render('booking-details', { 
+      booking, 
+      comments, 
+      isAuthenticated,
+      canComment: true, // Allow both authenticated users and tracking clients to comment
+      canDelete: isAuthenticated // Only authenticated users can delete comments
+    });
+
+  } catch (error) {
+    console.error('Error in booking details route:', error);
+    res.status(500).render('error', { 
+      message: 'An error occurred while loading the booking details',
+      error: error
+    });
+  }
+});
+
+// Route to add a comment
+app.post('/booking-details/:id/comment', upload.single('image'), async (req, res) => {
+  const bookingId = req.params.id;
+  const { content } = req.body;
+  const isAdmin = req.session.isAuthenticated;
+  const isTrackingClient = req.session.trackingBookingId === bookingId;
+
+  if (!isAdmin && !isTrackingClient) {
+    return res.status(403).render('error', { message: 'You do not have permission to post comments' });
+  }
+  
+  let imagePaths = null;
+  if (req.file) {
+    imagePaths = await saveCompressedImage(req.file);
+  }
+  
+  const comment = {
+    id: Date.now().toString(),
+    bookingId,
+    content,
+    imagePaths,
+    createdAt: new Date().toISOString(),
+    isAdmin
+  };
+  
+  const commentsPath = path.join(__dirname, 'data', 'comments.json');
+  const commentsData = await fs.readFile(commentsPath, 'utf-8');
+  const comments = JSON.parse(commentsData);
+  comments.push(comment);
+  await fs.writeFile(commentsPath, JSON.stringify(comments, null, 2));
+  
+  res.redirect(`/booking-details/${bookingId}`);
+});
+
+// Route to delete a comment (admin only)
+app.post('/booking-details/:bookingId/comment/:commentId/delete', async (req, res) => {
+  if (!req.session.isAuthenticated) {
+    return res.status(403).send('Unauthorized');
+  }
+  const { bookingId, commentId } = req.params;
+  
+  const commentsPath = path.join(__dirname, 'data', 'comments.json');
+  const commentsData = await fs.readFile(commentsPath, 'utf-8');
+  let comments = JSON.parse(commentsData);
+  
+  // Find the comment to be deleted
+  const commentToDelete = comments.find(c => c.id === commentId);
+  
+  if (commentToDelete && commentToDelete.imagePaths) {
+    // Delete the full-size image
+    const fullSizePath = path.join(__dirname, 'public', commentToDelete.imagePaths.fullSize);
+    await deleteFileIfExists(fullSizePath);
+    
+    // Delete the thumbnail
+    const thumbnailPath = path.join(__dirname, 'public', commentToDelete.imagePaths.thumbnail);
+    await deleteFileIfExists(thumbnailPath);
+  }
+  
+  // Remove the comment from the array
+  comments = comments.filter(c => c.id !== commentId);
+  
+  // Save the updated comments array
+  await fs.writeFile(commentsPath, JSON.stringify(comments, null, 2));
+  
+  res.redirect(`/booking-details/${bookingId}`);
+});
+
+// Update the booking-report route to include links to booking details
+// Booking report route
+app.get('/booking-report', async (req, res) => {
+  if (!req.session.isAuthenticated) {
+    return res.redirect('/login');
+  }
+  try {
+    await initializeBookingsFile();
+    const bookingsPath = path.join(__dirname, 'data', 'bookings.json');
+    const bookingsData = await fs.readFile(bookingsPath, 'utf-8');
+    const bookings = JSON.parse(bookingsData);
+    res.render('booking-report', { bookings });
+  } catch (error) {
+    console.error('Error in booking report route:', error);
+    res.status(500).render('error', { 
+      message: 'An error occurred while loading the booking report',
+      error: error
+    });
   }
 });
 
@@ -502,6 +752,61 @@ app.get('/get-settings', async (req, res) => {
     console.error('Error getting settings:', error);
     res.status(500).json({ error: 'An error occurred while fetching settings' });
   }
+});
+
+// Route to list all service files
+app.get('/service-editor', async (req, res) => {
+  if (!req.session.isAuthenticated) {
+    return res.redirect('/login');
+  }
+  const servicesDir = path.join(__dirname, 'content', 'services');
+  const files = await fs.readdir(servicesDir);
+  res.render('service-editor-list', { files });
+});
+
+// Route to edit a specific service file
+app.get('/service-editor/:filename', async (req, res) => {
+  if (!req.session.isAuthenticated) {
+    return res.redirect('/login');
+  }
+  const filename = req.params.filename;
+  const filePath = path.join(__dirname, 'content', 'services', filename);
+  const content = await fs.readFile(filePath, 'utf-8');
+  res.render('service-editor', { filename, content });
+});
+
+// Route to save changes to a service file
+app.post('/service-editor/:filename', async (req, res) => {
+  if (!req.session.isAuthenticated) {
+    return res.status(403).send('Unauthorized');
+  }
+  const filename = req.params.filename;
+  const content = req.body.content;
+  const filePath = path.join(__dirname, 'content', 'services', filename);
+  await fs.writeFile(filePath, content);
+  res.redirect('/service-editor');
+});
+
+// Route to create a new service file
+app.post('/service-editor', async (req, res) => {
+  if (!req.session.isAuthenticated) {
+    return res.status(403).send('Unauthorized');
+  }
+  const filename = req.body.filename;
+  const filePath = path.join(__dirname, 'content', 'services', filename);
+  await fs.writeFile(filePath, '# New Service\nDescription goes here.\n\n## Price: $0\n\nThumbnail: /path/to/image.jpg\nCategory: New Category');
+  res.redirect(`/service-editor/${filename}`);
+});
+
+// Route to delete a service file
+app.delete('/service-editor/:filename', async (req, res) => {
+  if (!req.session.isAuthenticated) {
+    return res.status(403).send('Unauthorized');
+  }
+  const filename = req.params.filename;
+  const filePath = path.join(__dirname, 'content', 'services', filename);
+  await fs.unlink(filePath);
+  res.sendStatus(200);
 });
 
 // Add a catch-all route for 404 errors
