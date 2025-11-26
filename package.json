@@ -3,15 +3,16 @@
   "version": "2.0.0",
   "description": "Simple Booking System",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build:css": "postcss public/styles/tailwind.css -o public/styles/style.css"
+  "engines": {
+    "node": "18.x"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "build:css": "postcss public/styles/tailwind.css -o public/styles/style.css",
+    "build": "npm run build:css"
+  },
   "dependencies": {
-    "bcrypt": "^5.1.1",
     "ejs": "^3.1.10",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.1",
@@ -19,7 +20,8 @@
     "markdown-it": "^14.1.0",
     "multer": "^1.4.5-lts.1",
     "sharp": "^0.33.5",
-    "uuid": "^10.0.0"
+    "@vercel/kv": "^2.0.0",
+    "@vercel/blob": "^0.23.0"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
