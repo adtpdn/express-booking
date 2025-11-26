@@ -1,23 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Error</title>
-    <link rel="icon" type="image/x-icon" href="/images/logo.svg">
-    <link href="/styles/style.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Error - Booking System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100">
-    <%- include('partials/navbar') %>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white rounded-lg shadow-lg p-8 max-w-2xl w-full">
+    <h1 class="text-4xl font-bold text-red-600 mb-4">Oops! Something went wrong</h1>
+    
+    <% if (message) { %>
+      <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+        <strong><%= message %></strong>
+      </div>
+    <% } %>
 
-    <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-6 text-red-600">Error</h1>
-        <p class="mb-4"><%= message %></p>
-        <% if (error) { %>
-            <pre class="bg-gray-200 p-4 rounded"><%= error.stack %></pre>
-        <% } %>
-        <a href="/" class="mt-4 inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Go Back Home</a>
+    <% if (typeof error !== 'undefined' && error && process.env.NODE_ENV !== 'production') { %>
+      <details class="mt-6">
+        <summary class="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900">
+          Show technical details (developers only)
+        </summary>
+        <pre class="mt-3 bg-gray-900 text-gray-100 p-4 rounded overflow-x-auto text-xs"><%= error.stack || error %></pre>
+      </details>
+    <% } %>
+
+    <div class="mt-8">
+      <a href="/" class="inline-block bg-blue-600 text-white font-medium px-6 py-3 rounded hover:bg-blue-700 transition">
+        ← Back to Home
+      </a>
     </div>
-    <script src="/js/navbar.js"></script>
+  </div>
 </body>
 </html>
