@@ -7,11 +7,10 @@ const session = require('express-session');
 const { webcrypto } = require('crypto');
 const multer = require('multer');
 const sharp = require('sharp');
-const { kv } = require('@vercel/kv');
-const { put, del } = require('@vercel/blob');
+const fs = require('fs').promises;
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 6969;
 
 // View engine & middleware
 app.set('view engine', 'ejs');
@@ -71,52 +70,29 @@ const KEYS = {
   settings: 'settings_v2'
 };
 
-// Helper: Get/Set JSON from Vercel KV
+const DATA_DIR = path.join(__dirname, 'data');
+
+// Helper: Get/Set JSON from local filesystem
 async function getJson(key, defaultValue = []) {
   try {
-    const data = await kv.get(key);
-    return data ?? defaultValue;
+    const data = await fs.readFile(path.join(DATA_DIR, `${key}.json`), 'utf-8');
+    return JSON.parse(data);
   } catch (err) {
-    console.error('KV get error:', err);
+    if (err.code !== 'ENOENT') console.error('Data get error:', err);
     return defaultValue;
   }
 }
+
 async function setJson(key, value) {
   try {
-    await kv.set(key, value);
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(path.join(DATA_DIR, `${key}.json`), JSON.stringify(value, null, 2), 'utf-8');
   } catch (err) {
-    console.error('KV set error:', err);
+    console.error('Data set error:', err);
   }
 }
 
-// Password hashing
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const salt = webcrypto.getRandomValues(new Uint8Array(16));
-  const key = await webcrypto.subtle.importKey('raw', data, 'PBKDF2', false, ['deriveBits']);
-  const derivedBits = await webcrypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-    key, 256
-  );
-  const hashHex = Array.from(new Uint8Array(derivedBits))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
-  return `${Buffer.from(salt).toString('hex')}:${hashHex}`;
-}
-async function verifyPassword(stored, input) {
-  const [saltHex, storedHash] = stored.split(':');
-  const salt = Buffer.from(saltHex, 'hex');
-  const encoder = new TextEncoder();
-  const data = encoder.encode(input);
-  const key = await webcrypto.subtle.importKey('raw', data, 'PBKDF2', false, ['deriveBits']);
-  const derivedBits = await webcrypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-    key, 256
-  );
-  const hashHex = Array.from(new Uint8Array(derivedBits))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
-  return storedHash === hashHex;
-}
+
 
 // Short ID generator
 function generateShortId() {
@@ -320,11 +296,18 @@ app.post('/booking-details/:id/comment', upload.single('image'), async (req, res
     const ext = path.extname(req.file.originalname);
     const filename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${ext}`;
 
-    const { url: fullUrl } = await put(`comments/full_${filename}`, req.file.buffer, { access: 'public' });
-    const thumbBuffer = await sharp(req.file.buffer).resize(50, 50, { fit: 'cover' }).jpeg({ quality: 70 }).toBuffer();
-    const { url: thumbUrl } = await put(`comments/thumb_${filename}`, thumbBuffer, { access: 'public' });
+    const uploadDir = path.join(__dirname, 'public', 'uploads');
+    await fs.mkdir(uploadDir, { recursive: true });
 
-    imagePaths = { fullSize: fullUrl, thumbnail: thumbUrl };
+    const fullFileName = `full_${filename}`;
+    const thumbFileName = `thumb_${filename}`;
+
+    await fs.writeFile(path.join(uploadDir, fullFileName), req.file.buffer);
+
+    const thumbBuffer = await sharp(req.file.buffer).resize(50, 50, { fit: 'cover' }).jpeg({ quality: 70 }).toBuffer();
+    await fs.writeFile(path.join(uploadDir, thumbFileName), thumbBuffer);
+
+    imagePaths = { fullSize: `/uploads/${fullFileName}`, thumbnail: `/uploads/${thumbFileName}` };
   }
 
   const comment = {
@@ -352,10 +335,15 @@ app.post('/booking-details/:bookingId/comment/:commentId/delete', async (req, re
   const comment = comments.find(c => c.id === commentId);
 
   if (comment?.imagePaths) {
-    await Promise.allSettled([
-      del(comment.imagePaths.fullSize),
-      del(comment.imagePaths.thumbnail)
-    ]);
+    try {
+      const publicDir = path.join(__dirname, 'public');
+      await Promise.allSettled([
+        fs.unlink(path.join(publicDir, 'uploads', path.basename(comment.imagePaths.fullSize))),
+        fs.unlink(path.join(publicDir, 'uploads', path.basename(comment.imagePaths.thumbnail)))
+      ]);
+    } catch (err) {
+      console.error('Error deleting images:', err);
+    }
   }
 
   comments = comments.filter(c => c.id !== commentId);
@@ -369,7 +357,8 @@ app.get('/login', (req, res) => res.render('login'));
 app.post('/login', async (req, res) => {
   const { password } = req.body;
   const settings = await getSettings();
-  if (settings.reportPassword && await verifyPassword(settings.reportPassword, password)) {
+  const validPassword = settings.reportPassword || 'Admin123';
+  if (password === validPassword) {
     req.session.isAuthenticated = true;
     res.redirect(req.session.returnTo || '/booking-report');
   } else {
@@ -384,9 +373,8 @@ app.get('/logout', (req, res) => {
 app.get('/set-password', async (req, res) => {
   const { password } = req.query;
   if (!password || password.length < 8) return res.status(400).send('Password must be 8+ chars');
-  const hashed = await hashPassword(password);
   const settings = await getSettings();
-  settings.reportPassword = hashed;
+  settings.reportPassword = password;
   await setJson(KEYS.settings, settings);
   res.send('Admin password set successfully!');
 });
